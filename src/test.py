@@ -48,6 +48,7 @@ def display_tags(img, tags):
 
 
 def in_color_bounds(hsv, min_lim, max_lim):
+    # FIXME: THIS IS THE BOTTLENECK!!!!!!!!!!!!!!!!
     h, s, v = hsv
     maxh, maxs, maxv = max_lim
     minh, mins, minv = min_lim
@@ -79,7 +80,7 @@ def in_frame_bounds(img, coords):
     if coords[0] < height-1 and coords[1] < width-1:
         return True
     else:
-        return  False
+        return False
 
 
 def get_color_beliefs(img, tag):
@@ -142,15 +143,15 @@ def label_bees(img):
 
 if __name__ == "__main__":
     # # Load the image in color
-    # img = cv2.imread('img/OneYellowBee.png', 1)
+    # img = cv2.imread('../img/OneYellowBee.png', 1)
     # # Label tags
     # label_bees(img)
 
-    cap = cv2.VideoCapture("vid/videoDemo.mp4")
+    cap = cv2.VideoCapture("../vid/videoDemo.mp4")
     frames = []
     labeled = []
 
-    while len(frames) < 450:
+    while len(frames) < 5:
         ret, frame = cap.read()
         frames.append(frame)
 
@@ -165,6 +166,7 @@ if __name__ == "__main__":
         time.sleep(0.1)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
+
 
     # while (True):
     #     # Capture frame-by-frame
