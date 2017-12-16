@@ -10,18 +10,19 @@
 import cv2
 import numpy as np
 import time
+import random
 from Tag import Tag
-
+from config import params
 
 
 def get_tags(img, tolerance=20):
     """ Return a list of bee tags. Each tag has a coordinate. """
     height, width = img.shape
     avg_r = height / 20.0
-    min_r = int(avg_r * 0.8)
-    max_r = int(avg_r * 1.1)
+    min_r = int(avg_r * params["TagSizeMinPercentage"])
+    max_r = int(avg_r * params["TagSizeMaxPercentage"])
     circles = cv2.HoughCircles(img, cv2.cv.CV_HOUGH_GRADIENT, 1,
-                               minDist=10, minRadius=min_r, maxRadius=max_r, param2=tolerance)
+                               minDist=params["MinTagDist"], minRadius=min_r, maxRadius=max_r, param2=tolerance)
     tags = []
     for circle in circles[0]:
         t = Tag()
@@ -33,7 +34,7 @@ def get_tags(img, tolerance=20):
 
 def display_img(img, text='Image'):
     cv2.imshow(text, img)
-    cv2.moveWindow('Image', 200, 200)
+    cv2.moveWindow('Image', params["WindowPosX"], params["WindowPosY"])
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
@@ -48,14 +49,14 @@ def display_tags(img, tags):
 
 
 def in_color_bounds(hsv, min_lim, max_lim):
-    # FIXME: THIS IS THE BOTTLENECK!!!!!!!!!!!!!!!!
+    """ Return True if a pixel is in given HSV range """
     h, s, v = hsv
     maxh, maxs, maxv = max_lim
     minh, mins, minv = min_lim
-    if h > maxh or h < minh or s > maxs or s < mins or v > maxv or v < minv:
-        return False
-    else:
+    if minh <= h <= maxh and mins <= s <= maxs and minv <= v <= maxv:
         return True
+    else:
+        return False
 
 
 def saturate(img, intensity=1.5):
@@ -91,25 +92,30 @@ def get_color_beliefs(img, tag):
     # Tag parameters
     x = int(tag.coords[0])
     y = int(tag.coords[1])
-    r = int(tag.size)
+    r = int(tag.size * 0.9)
     # Initialize accumulators
     acc_y = 0.0
     acc_w = 0.0
-    total = (2 * r) ** 2
-    for i in range(-r, r):
-        for j in range(-r, r):
-            if in_frame_bounds(img, (y+i, x+j)):
-                hsv = h[y + i][x + j], s[y + i][x + j], v[y + i][x + j]
-                # Test for yellow color
-                if in_color_bounds(hsv, np.array([15, 30, 150]), np.array([50, 150, 255])):
-                    acc_y += 1
-                # Test for white color
-                if in_color_bounds(hsv, np.array([0, 0, 200]), np.array([180, 25, 255])):
-                    acc_w += 1
+
+    # Check randomly sampled pixels in circle --- FAST
+    samples = params["ColorDetectSamples"]
+    for i in range(samples):
+        i = random.randrange(-r, r)
+        j = random.randrange(-r, r)
+
+        if in_frame_bounds(img, (y+i, x+j)):
+            hsv = h[y + i][x + j], s[y + i][x + j], v[y + i][x + j]
+            # Test for yellow color
+            if in_color_bounds(hsv, np.array(params["YellowMin"]), np.array(params["YellowMax"])):
+                acc_y += 1
+            # Test for white color
+            elif in_color_bounds(hsv, np.array(params["WhiteMin"]), np.array(params["WhiteMax"])):
+                acc_w += 1
+
     # Return percentages
-    white = acc_w / total
-    yellow = acc_y / total
-    return {"WHITE" : white, "YELLOW" : yellow}
+    white = acc_w / samples
+    yellow = acc_y / samples
+    return {"WHITE": white, "YELLOW": yellow}
 
 
 def get_tag_color(img, tag, threshold=0.5):
@@ -121,59 +127,69 @@ def get_tag_color(img, tag, threshold=0.5):
     else:
         return best
 
+
 def label_bees(img):
     """ Return a frame with tagged bees labeled with their tag color. """
     img_bw = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    tags = get_tags(img_bw, tolerance=25)
+    tags = get_tags(img_bw, tolerance=params["HoughTolerance"])
     for tag in tags:
-        color = get_tag_color(img, tag, threshold=0.4)
+        color = get_tag_color(img, tag, threshold=params["ColorThreshold"])
         if color != "UNSURE":
             # Backdrop for lulz
-            cv2.putText(img, color, (int(tag.coords[0]+52), int(tag.coords[1]-23)) , fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                        fontScale=1, color=(0,0,0), thickness=2)
+            cv2.putText(img, color, (int(tag.coords[0]+52), int(tag.coords[1]-23)), fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                        fontScale=1, color=(0, 0, 0), thickness=2)
             # Display color of tag
-            cv2.putText(img, color, (int(tag.coords[0]+50), int(tag.coords[1]-25)) , fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                        fontScale=1, color=(255,255,0), thickness=2)
+            cv2.putText(img, color, (int(tag.coords[0]+50), int(tag.coords[1]-25)), fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                        fontScale=1, color=(255, 255, 0), thickness=2)
     return img
 
-# TODO: Profile Code
-# TODO: Split video into individual bee chunks
-# TODO: Read bee tag OCR
-# TODO: Clean up code, get rid of literals
 
-if __name__ == "__main__":
-    # # Load the image in color
-    # img = cv2.imread('../img/OneYellowBee.png', 1)
-    # # Label tags
-    # label_bees(img)
+def realtime_playback(video):
+    """ Plays a video with performing operations on each frame. Computations are real-time. """
+    cap = cv2.VideoCapture(video)
+    frame_ct = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
 
-    cap = cv2.VideoCapture("../vid/videoDemo.mp4")
+    for i in range(frame_ct):
+        # Capture frame-by-frame
+        ret, frame = cap.read()
+        # Operations on the frame come here
+        label_bees(frame)
+        # Display the resulting frame
+        cv2.imshow('frame', frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+
+def offline_playback(video):
+    """ Plays a video with performing operations on each frame. Computes operations offline."""
+    cap = cv2.VideoCapture(video)
+    frame_ct = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
     frames = []
-    labeled = []
+    processed = []
 
-    while len(frames) < 5:
+    for i in range(frame_ct):
         ret, frame = cap.read()
         frames.append(frame)
 
     for frame in frames:
         f = label_bees(frame)
-        labeled.append(f)
+        processed.append(f)
 
     raw_input("READY! Press Enter to continue...")
-
-    for i in labeled:
+    for i in processed:
         cv2.imshow('frame', i)
         time.sleep(0.1)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
 
-    # while (True):
-    #     # Capture frame-by-frame
-    #     ret, frame = cap.read()
-    #     # Our operations on the frame come here
-    #     # Display the resulting frame
-    #     cv2.imshow('frame', frame)
-    #     if cv2.waitKey(1) & 0xFF == ord('q'):
-    #         break
+# TODO: Split video into individual bee chunks
+# TODO: Read bee tag OCR
+
+if __name__ == "__main__":
+    # # Load the image in color
+    # img = cv2.imread('../img/OneYellowBee.png', 1)
+    # offline_playback("../vid/videoDemo.mp4")
+    realtime_playback("../vid/videoDemo.mp4")
+
 
