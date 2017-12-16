@@ -94,8 +94,8 @@ def get_color_beliefs(img, tag):
             if in_color_bounds(hsv, np.array([0, 0, 200]), np.array([180, 25, 255])):
                 acc_w += 1
     # Return percentages
-    yellow = acc_w / total
-    white = acc_y / total
+    white = acc_w / total
+    yellow = acc_y / total
     return {"WHITE" : white, "YELLOW" : yellow}
 
 
@@ -110,16 +110,22 @@ def get_tag_color(img, tag, threshold=0.5):
 
 def label_bees(img):
     """ Display a frame with tagged bees labeled with their tag color. """
-    pass
+    img_bw = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    tags = get_tags(img_bw)
+    for tag in tags:
+        color = get_tag_color(img, tag, threshold=0.25)
+        # Backdrop for lulz
+        cv2.putText(img, color, (int(tag.coords[0]+52), int(tag.coords[1]-23)) , fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=1, color=(0,0,0), thickness=2)
+        # Display color of tag
+        cv2.putText(img, color, (int(tag.coords[0]+50), int(tag.coords[1]-25)) , fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=1, color=(255,255,0), thickness=2)
+    display_img(img)
 
 
 if __name__ == "__main__":
-    # Load the image in black & white
-    img_bw = cv2.imread('img/OneWhiteOneYellowBee.png', 0)
     # Load the image in color
     img = cv2.imread('img/OneWhiteOneYellowBee.png', 1)
-    tags = get_tags(img_bw)
-    # display_tags(img, tags)
-    # img = saturate(img, 1.5)
-    print get_tag_color(img, tags[0])
-    print get_tag_color(img, tags[1])
+    # Label tags
+    label_bees(img)
+
