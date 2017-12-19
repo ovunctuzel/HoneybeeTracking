@@ -5,7 +5,7 @@ params = {
     # CV PARAMETERS ======================
     # TAG DETECTION ----------------------
     "HoughTolerance": 25,                       # Higher value detects less circles
-    "ColorThreshold": 0.35,                     # Threshold for labeling colors
+    "ColorThreshold": 0.25,                     # Threshold for labeling colors
     # TAG PROPERTIES ---------------------
     "TagSizeScreenHeightRatio": 0.05,
     "TagSizeMaxPercentage": 1.1,
@@ -16,5 +16,7 @@ params = {
     "YellowMin": [15, 30, 150],
     "YellowMax": [50, 150, 255],
     "WhiteMin": [0, 0, 200],
-    "WhiteMax": [180, 25, 255]
+    "WhiteMax": [180, 25, 255],
+    # CHUNKING ===========================
+    "CropSize": 100
 }

@@ -1,22 +1,16 @@
-# from PIL import Image
-# import pytesseract as tess
-#
-# im = Image.open("Bee.png")
-#
-# text = tess.image_to_string(im)
-#
-# print text
-
 import cv2
 import numpy as np
 import time
 import random
 from Tag import Tag
 from config import params
+from PIL import Image
+import pytesseract as tess
 
 
 def get_tags(img, tolerance=20):
     """ Return a list of bee tags. Each tag has a coordinate. """
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     height, width = img.shape
     avg_r = height / 20.0
     min_r = int(avg_r * params["TagSizeMinPercentage"])
@@ -24,12 +18,15 @@ def get_tags(img, tolerance=20):
     circles = cv2.HoughCircles(img, cv2.cv.CV_HOUGH_GRADIENT, 1,
                                minDist=params["MinTagDist"], minRadius=min_r, maxRadius=max_r, param2=tolerance)
     tags = []
-    for circle in circles[0]:
-        t = Tag()
-        t.coords = circle[0], circle[1]
-        t.size = circle[2]
-        tags.append(t)
-    return tags
+    if len(circles[0]==0):
+        for circle in circles[0]:
+            t = Tag()
+            t.coords = circle[0], circle[1]
+            t.size = circle[2]
+            tags.append(t)
+        return tags
+    else:
+        print "ERROR: No circles found in image"
 
 
 def display_img(img, text='Image'):
@@ -97,7 +94,7 @@ def get_color_beliefs(img, tag):
     acc_y = 0.0
     acc_w = 0.0
 
-    # Check randomly sampled pixels in circle --- FAST
+    # Check randomly sampled pixels in circle --- FASTER than checking all pixels
     samples = params["ColorDetectSamples"]
     for i in range(samples):
         i = random.randrange(-r, r)
@@ -118,7 +115,7 @@ def get_color_beliefs(img, tag):
     return {"WHITE": white, "YELLOW": yellow}
 
 
-def get_tag_color(img, tag, threshold=0.5):
+def get_tag_color(img, tag, threshold=params["ColorThreshold"]):
     """ Return tag color as string. Return "UNSURE" if all beliefs are under a threshold. """
     beliefs = get_color_beliefs(img, tag)
     best = max(beliefs.iterkeys(), key=lambda k: beliefs[k])
@@ -130,10 +127,9 @@ def get_tag_color(img, tag, threshold=0.5):
 
 def label_bees(img):
     """ Return a frame with tagged bees labeled with their tag color. """
-    img_bw = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    tags = get_tags(img_bw, tolerance=params["HoughTolerance"])
+    tags = get_tags(img, tolerance=params["HoughTolerance"])
     for tag in tags:
-        color = get_tag_color(img, tag, threshold=params["ColorThreshold"])
+        color = get_tag_color(img, tag)
         if color != "UNSURE":
             # Backdrop for lulz
             cv2.putText(img, color, (int(tag.coords[0]+52), int(tag.coords[1]-23)), fontFace=cv2.FONT_HERSHEY_SIMPLEX,
@@ -183,13 +179,162 @@ def offline_playback(video):
             break
 
 
-# TODO: Split video into individual bee chunks
-# TODO: Read bee tag OCR
+def output_video(images, name='video.avi'):
+    """ Given a list of images, create a video. """
+    height, width, layers = images[0].shape
+    video = cv2.VideoWriter(name, cv2.cv.CV_FOURCC(*'MP42'), 30, (width, height))
+    for image in images:
+        # display_img(image)
+        video.write(image)
+    cv2.destroyAllWindows()
+    video.release()
+
+
+def clean_img(img):
+    """ Return a cleaner version of image """
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    img = cv2.GaussianBlur(img, (5, 5), 0)
+    # display_img(img)
+    ret, img = cv2.threshold(img, 185, 255, cv2.ADAPTIVE_THRESH_MEAN_C)
+    # display_img(img)
+    # kernel = np.ones((3, 3), np.uint8)
+    # img = cv2.dilate(img, kernel, iterations=1)
+    # display_img(img)
+    # kernel = np.ones((2, 2), np.uint8)
+    # img = cv2.erode(img, kernel, iterations=1)
+    # display_img(img)
+    return img
+
+
+def tesseract_read(img, psm=8):
+    """ Return text in given image as a string. For best results preprocess the input image. """
+    # display_img(img)
+    img = Image.fromarray(img)
+    text = tess.image_to_string(img, config="-c tessedit_char_whitelist=0123456789 load_system_dawg=false load_freq_dawg=false -psm %d" % psm)
+    if text != "":
+        print text
+    return text
+
+
+def crop_tag(img, tag):
+    """ Return cropped tag image with clear background. """
+    x, y, r = int(tag.coords[0]), int(tag.coords[1]), int(tag.size)
+    # Crop tag area
+    cropped_img = img[y-r:y+r, x-r:x+r]
+    # Remove background
+    for i in range(r*2):
+        for j in range(r*2):
+            if (i-r)**2 + (j-r)**2 > r**2 - 250:
+                cropped_img[i, j] = [255, 255, 255]
+    return cropped_img
+
+
+def get_tag_id(img, tag, rotation=0):
+    """ Return tag number """
+    cropped_img = crop_tag(img, tag)
+    # Clean cropped image
+    cropped_img = clean_img(cropped_img)
+    # Rotate image - Optional
+    cropped_img = rotate_img(cropped_img, rotation)
+    # Read string
+    tag_id = tesseract_read(cropped_img)
+    tag_id = tag_id.replace(" ", "")
+    if tag_id == "" or len(tag_id.split('\n'))!=1:
+        # print "ERROR: Couldn't detect tag number."
+        return None
+    else:
+        return int(tag_id)
+
+
+def rotate_img(img, angle):
+    if angle == 0:
+        return img
+    num_rows, num_cols = img.shape[:2]
+    rotation_matrix = cv2.getRotationMatrix2D((num_cols / 2, num_rows / 2), angle, 1)
+    return cv2.warpAffine(img, rotation_matrix, (num_cols, num_rows))
+
+
+def rotation_invariant_tag_detect(img, tag):
+    """ Return tag number invariant of tag rotation """
+    candidates = []
+    for i in range(72):
+        tag_id = get_tag_id(img, tag, rotation=i*5)
+        if tag_id:
+            candidates.append(tag_id)
+    print candidates
+    if candidates:
+        return max(candidates, key=candidates.count)
+    else:
+        return None
+
+
+def dist_between(coord1, coord2):
+    return ((coord1[0] - coord2[0])**2 + (coord1[1] - coord2[1])**2) ** 0.5
+
+def split_video(video):
+    # FIXME: This is a mess, try with smaller video before going to 4K
+    cap = cv2.VideoCapture(video)
+    frame_ct = 50 # int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
+
+    seq = []
+    for i in range(frame_ct):
+        # Capture frame-by-frame
+        ret, frame = cap.read()
+        # Operations on the frame come here
+        tags = get_tags(frame)
+
+        # FIXME: Keep track of coordinates to track a single tag --> Ultimately amcl style localization
+        tag = None
+        for t in tags:
+            if get_tag_color(frame, t) == "YELLOW":
+                tag = t
+
+        if tag:
+            x, y = int(tag.coords[0]), int(tag.coords[1])
+
+            # FIXME: Intelligent cropping
+            r = params["CropSize"]
+            # Crop tag area
+            height, width, channels = frame.shape
+            cropped = frame[min(0, y - r):max(height, y + r), min(0,x - r):max(height,x + r)]
+            seq.append(cropped)
+    print len(seq)
+    if seq:
+        output_video(seq, name='output.avi')
+
+
+
+# TODO: OCR Accuracy
+# TODO: Split video into individual bee chunks -- Kinda here
 
 if __name__ == "__main__":
+    split_video("../vid/C0007.mp4")
+
+#     print "GROUND: 49,49,49,26,30"
+#     psm = 9
+#     print "-------------------"
+#     tesseract_read("../img/A.png",psm)
+#     tesseract_read("../img/B.png",psm)
+#     tesseract_read("../img/C.png",psm)
+#     tesseract_read("../img/D.png",psm)
+#     tesseract_read("../img/E.png",psm)
+#     print "##"
+#     tesseract_read("../img/A_rot.png",psm)
+#     tesseract_read("../img/B_rot.png",psm)
+#     tesseract_read("../img/C_rot.png",psm)
+#     tesseract_read("../img/D_rot.png",psm)
+#     tesseract_read("../img/E_rot.png",psm)
+
     # # Load the image in color
     # img = cv2.imread('../img/OneYellowBee.png', 1)
     # offline_playback("../vid/videoDemo.mp4")
-    realtime_playback("../vid/videoDemo.mp4")
+    # realtime_playback("../vid/C0007.MP4")
 
+    # img = cv2.imread('../img/TwoWhiteBees.png', 1)
+
+    # display_img(img)
+    # tags = get_tags(img)
+
+    # print rotation_invariant_tag_detect(img, tags[1])
+    # print rotation_invariant_tag_detect(img, tags[2])
 
