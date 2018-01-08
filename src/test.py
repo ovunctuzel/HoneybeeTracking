@@ -271,44 +271,97 @@ def rotation_invariant_tag_detect(img, tag):
 def dist_between(coord1, coord2):
     return ((coord1[0] - coord2[0])**2 + (coord1[1] - coord2[1])**2) ** 0.5
 
+
+def get_nth_frame_video(video, n):
+    """ Return nth frame from a video file."""
+    cap = cv2.VideoCapture(video)
+    frame = None
+    if int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)) < n:
+        print "ERROR: n must be smaller than total frame count!"
+    else:
+        for i in range(n):
+            ret, frame = cap.read()
+    return frame
+
+
+def filter_coords(prevCoords, newcoord, tolerance=100):
+    """ By inspecting previous coordinates, approve or reject a new coordinate as feasible """
+    p = 3
+    if len(prevCoords) >= p:
+        avgp = 0
+        for i in range(1, p+1):
+            avgp += np.array(prevCoords[-i])/float(p)
+        print "Average: {} New: {} Dist: {} Tol: {}".format(avgp, newcoord, dist_between(avgp, newcoord), tolerance)
+        if dist_between(avgp, newcoord) > tolerance:
+            print "Rejected"
+            return False
+    print "Approved"
+    return True
+
+
 def split_video(video):
     # FIXME: This is a mess, try with smaller video before going to 4K
     cap = cv2.VideoCapture(video)
-    frame_ct = 50 # int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
+    frame_ct = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
 
     seq = []
+    prev_coords = []
+    tolerance = 30
     for i in range(frame_ct):
         # Capture frame-by-frame
         ret, frame = cap.read()
         # Operations on the frame come here
         tags = get_tags(frame)
 
-        # FIXME: Keep track of coordinates to track a single tag --> Ultimately amcl style localization
+        # FIXME: Still very messy, but not terrible. Clean this up.
         tag = None
+
         for t in tags:
             if get_tag_color(frame, t) == "YELLOW":
-                tag = t
+
+                # Display demo ###############
+                # Candidate tag
+                cv2.circle(frame, (t.coords[0], t.coords[1]), t.size, (255, 255, 255))
+                # Search area
+
+                p = 3
+                avgp = (0, 0)
+                if len(prev_coords) >= p:
+                    for i in range(1, p + 1):
+                        avgp += np.array(prev_coords[-i]) / float(p)
+
+                cv2.circle(frame, (int(avgp[0]), int(avgp[1])), int(tolerance), (50, 50, 255))
+                display_img(frame)
+                ##############################
+
+                if filter_coords(prev_coords, t.coords, tolerance):
+                    tolerance = 30
+                    prev_coords.append(t.coords)
+                    tag = t
+                else:
+                    tolerance *= 1.25
 
         if tag:
-            x, y = int(tag.coords[0]), int(tag.coords[1])
-
-            # FIXME: Intelligent cropping
-            r = params["CropSize"]
-            # Crop tag area
             height, width, channels = frame.shape
-            cropped = frame[min(0, y - r):max(height, y + r), min(0,x - r):max(height,x + r)]
+            r = params["CropSize"]
+            # Correct point of interest to be bounded
+            # print height, width, r
+            # print tag.coords[0], tag.coords[1]
+            x, y = min(max(r, int(tag.coords[0])), width-r), min(max(r, int(tag.coords[1])), height-r)
+            # print "Corrected: ", x, y
+            # Crop tag area
+            cropped = frame[y-r:y+r, x-r:x+r]
             seq.append(cropped)
     print len(seq)
     if seq:
-        output_video(seq, name='output.avi')
-
+        output_video(seq, name='../vid/output.avi')
 
 
 # TODO: OCR Accuracy
 # TODO: Split video into individual bee chunks -- Kinda here
 
 if __name__ == "__main__":
-    split_video("../vid/C0007.mp4")
+    # split_video("../vid/videoDemo.mp4")
 
 #     print "GROUND: 49,49,49,26,30"
 #     psm = 9
@@ -327,8 +380,9 @@ if __name__ == "__main__":
 
     # # Load the image in color
     # img = cv2.imread('../img/OneYellowBee.png', 1)
-    # offline_playback("../vid/videoDemo.mp4")
+    offline_playback("../vid/videoDemo.mp4")
     # realtime_playback("../vid/C0007.MP4")
+
 
     # img = cv2.imread('../img/TwoWhiteBees.png', 1)
 
