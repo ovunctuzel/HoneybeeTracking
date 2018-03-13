@@ -3,9 +3,6 @@
   <component name="ChangeListManager">
     <list default="true" id="3d767847-3273-4fd4-b64d-68d9c95845ab" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/Spreadsheet.py" afterPath="$PROJECT_DIR$/src/Spreadsheet.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/Video.py" afterPath="$PROJECT_DIR$/src/Video.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/main.py" afterPath="$PROJECT_DIR$/src/main.py" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -467,7 +464,14 @@
       <option name="project" value="LOCAL" />
       <updated>1520965341220</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="Training Clip Extraction">
+      <created>1520965897796</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1520965897796</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TodoView">
