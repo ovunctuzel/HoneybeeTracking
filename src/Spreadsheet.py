@@ -5,6 +5,7 @@ class Spreadsheet(object):
     def __init__(self, path):
         self.path = path
         self.items = []
+        self.load_items()
 
     def load_items(self):
         """

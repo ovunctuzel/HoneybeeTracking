@@ -48,7 +48,9 @@ class Video(object):
             frameend = int(map_range(endsecs, 0, framect / self.fps, 0, framect))
         else:
             frameend = int(map_range(startsecs + fixeddur, 0, framect / self.fps, 0, framect))
-        return framestart, frameend
+        if self.frames < frameend:
+            print "WARNING: Video" + self.name + "is too short."
+        return framestart, min(self.frames, frameend)
 
     def play_clip_timestamps(self, (starttime, endtime), fps=120):
         """
