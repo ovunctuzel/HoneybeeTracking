@@ -1,6 +1,0 @@
-# Profile a given script, and open profiling results in a browser.
-# Requires cProfile, cProfilev, Google Chrome
-python -m cProfile -o profile_output.profile test.py
-cprofilev -f src/profile_output.profile
-google-chrome http://localhost:4000/
-# cd ..
